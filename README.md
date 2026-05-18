@@ -2,7 +2,6 @@
 
 Lightweight **CPU-only** binary classifier (benign vs malignant) for dermoscopic images, trained on an [ISIC 2019](https://challenge.isic-archive.com/data/) subset, with a localhost web API.
 
-**Not for clinical use** — research and education only.
 
 ## Highlights
 
