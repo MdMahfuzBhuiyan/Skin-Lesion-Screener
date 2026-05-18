@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
-"""Download ISIC 2019 ground truth and a stratified image subset (CPU-friendly)."""
+"""
+Prepare DermaMNIST (MedMNIST) at native 128×128 — reliable auto-download.
+
+Uses official train/val/test splits (no random re-split leakage).
+"""
 
 from __future__ import annotations
 
 import argparse
 import sys
-import urllib.request
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yaml
-from sklearn.model_selection import train_test_split
+from PIL import Image
 from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.labels import CLASS_COLUMNS, row_to_binary_label
+from src.labels import class_id_to_binary
 
 
 def load_config() -> dict:
@@ -24,113 +28,130 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
-def download_file(url: str, dest: Path) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
-        print(f"Already exists: {dest}")
-        return
-    print(f"Downloading {url} …")
-    urllib.request.urlretrieve(url, dest)
+def parse_class_id(label) -> int:
+    arr = np.asarray(label).astype(int).flatten()
+    return int(arr[0])
 
 
-def build_manifest(gt_df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
-    malignant = cfg["data"]["malignant_classes"]
-    benign = cfg["data"]["benign_classes"]
+def load_dermamnist_splits(load_size: int):
+    try:
+        from medmnist import INFO
+        import medmnist
+    except ImportError as e:
+        raise SystemExit(
+            "Install MedMNIST first: pip install medmnist\n"
+            "Then re-run: python scripts/download_data.py"
+        ) from e
 
-    records = []
-    for _, row in gt_df.iterrows():
-        image_id = row["image"]
-        label = row_to_binary_label(row, malignant, benign)
-        if label is None:
+    info = INFO["dermamnist"]
+    DataClass = getattr(medmnist, info["python_class"])
+
+    splits = {}
+    for split in ("train", "val", "test"):
+        ds = DataClass(split=split, download=True, size=load_size, as_rgb=True)
+        splits[split] = ds
+    return splits, info
+
+
+def sample_split(df: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
+    """Random sample keeping natural benign/malignant ratio (HAM10000-like)."""
+    if len(df) <= n:
+        return df.reset_index(drop=True)
+    sampled = df.sample(n=n, random_state=seed).reset_index(drop=True)
+    return sampled
+
+
+def build_split_records(dataset, split_name: str, cfg: dict) -> pd.DataFrame:
+    malignant_ids = cfg["data"]["malignant_class_ids"]
+    benign_ids = cfg["data"]["benign_class_ids"]
+    rows = []
+    for idx in range(len(dataset)):
+        _, label = dataset[idx]
+        class_id = parse_class_id(label)
+        binary = class_id_to_binary(class_id, malignant_ids, benign_ids)
+        if binary is None:
             continue
-        records.append({"image_id": image_id, "label": label})
-
-    manifest = pd.DataFrame(records)
-    subset_size = cfg["data"]["subset_size"]
-    if len(manifest) > subset_size:
-        seed = cfg["data"]["seed"]
-        half = subset_size // 2
-        parts = []
-        for label in ("benign", "malignant"):
-            group = manifest[manifest["label"] == label]
-            n = min(len(group), half if label == "benign" else subset_size - half)
-            parts.append(group.sample(n=n, random_state=seed))
-        manifest = pd.concat(parts, ignore_index=True).sample(frac=1, random_state=seed)
-    return manifest
+        rows.append(
+            {
+                "image_id": f"derma_{split_name}_{idx:05d}",
+                "label": binary,
+                "class_id": class_id,
+                "source_split": split_name,
+                "dataset_index": idx,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
-def download_images(manifest: pd.DataFrame, cfg: dict) -> pd.DataFrame:
-    raw_dir = ROOT / cfg["data"]["raw_dir"]
-    base_url = cfg["data"]["image_base_url"].rstrip("/")
+def export_split(
+    manifest: pd.DataFrame,
+    dataset,
+    raw_dir: Path,
+    split_name: str,
+    export_size: int,
+) -> pd.DataFrame:
     paths = []
-
-    for image_id in tqdm(manifest["image_id"], desc="images"):
-        dest = raw_dir / f"{image_id}.jpg"
-        if not dest.exists():
-            url = f"{base_url}/{image_id}.jpg"
-            try:
-                urllib.request.urlretrieve(url, dest)
-            except Exception as e:
-                print(f"  skip {image_id}: {e}")
-                paths.append(None)
-                continue
+    for row in tqdm(manifest.itertuples(), total=len(manifest), desc=f"export {split_name}"):
+        img, _ = dataset[row.dataset_index]
+        if not isinstance(img, Image.Image):
+            img = Image.fromarray(np.array(img))
+        img = img.convert("RGB")
+        if export_size and (img.width != export_size or img.height != export_size):
+            img = img.resize((export_size, export_size), Image.Resampling.LANCZOS)
+        dest = raw_dir / f"{row.image_id}.png"
+        img.save(dest)
         paths.append(str(dest.relative_to(ROOT)))
-
-    manifest = manifest.copy()
-    manifest["filepath"] = paths
-    return manifest.dropna(subset=["filepath"])
+    out = manifest.copy()
+    out["filepath"] = paths
+    return out
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download ISIC 2019 subset")
-    parser.add_argument("--skip-images", action="store_true", help="Only fetch CSV / build splits")
-    parser.add_argument("--max-images", type=int, default=None, help="Cap downloads (debug)")
+    parser = argparse.ArgumentParser(description="Prepare DermaMNIST (128px) with official splits")
+    parser.add_argument("--subset-size", type=int, default=None, help="Total images (split across train/val/test)")
     args = parser.parse_args()
 
     cfg = load_config()
-    gt_path = ROOT / "data" / "ISIC_2019_Training_GroundTruth.csv"
-    download_file(cfg["data"]["ground_truth_url"], gt_path)
+    load_size = cfg["data"].get("medmnist_load_size", 28)
+    export_size = cfg["data"].get("export_size", 128)
+    subset_total = args.subset_size or cfg["data"]["subset_size"]
+    seed = cfg["data"]["seed"]
 
-    gt_df = pd.read_csv(gt_path)
-    assert "image" in gt_df.columns, "Expected 'image' column in ground truth CSV"
+    train_n = int(subset_total * 0.7)
+    val_n = int(subset_total * 0.15)
+    test_n = subset_total - train_n - val_n
 
-    manifest = build_manifest(gt_df, cfg)
-    print(f"Subset: {len(manifest)} images (benign={sum(manifest['label']=='benign')}, "
-          f"malignant={sum(manifest['label']=='malignant')})")
+    print(f"Loading DermaMNIST {load_size}px → exporting {export_size}px…")
+    splits, info = load_dermamnist_splits(load_size)
+    print(f"Dataset: {info['description'][:80]}…")
 
-    if args.max_images:
-        manifest = manifest.head(args.max_images)
-
+    raw_dir = ROOT / cfg["data"]["raw_dir"]
+    raw_dir.mkdir(parents=True, exist_ok=True)
     processed_dir = ROOT / cfg["data"]["processed_dir"]
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.skip_images:
-        manifest["filepath"] = manifest["image_id"].apply(
-            lambda i: str((ROOT / cfg["data"]["raw_dir"] / f"{i}.jpg").relative_to(ROOT))
+    split_targets = {"train": train_n, "val": val_n, "test": test_n}
+    exported = {}
+
+    for split_name, target_n in split_targets.items():
+        records = build_split_records(splits[split_name], split_name, cfg)
+        sampled = sample_split(records, target_n, seed + hash(split_name) % 1000)
+        exported[split_name] = export_split(
+            sampled, splits[split_name], raw_dir, split_name, export_size
         )
-    else:
-        manifest = download_images(manifest, cfg)
+        n_ben = (exported[split_name]["label"] == "benign").sum()
+        n_mal = (exported[split_name]["label"] == "malignant").sum()
+        print(f"  {split_name}: {len(exported[split_name])} (benign={n_ben}, malignant={n_mal})")
 
-    seed = cfg["data"]["seed"]
-    train_ratio = cfg["data"]["train_ratio"]
-    val_ratio = cfg["data"]["val_ratio"]
-    test_ratio = cfg["data"]["test_ratio"]
+    cols = ["image_id", "label", "filepath", "class_id"]
+    for split_name, df in exported.items():
+        df[cols].to_csv(processed_dir / f"{split_name}.csv", index=False)
 
-    train_df, temp_df = train_test_split(
-        manifest, test_size=(1 - train_ratio), stratify=manifest["label"], random_state=seed
-    )
-    rel_val = val_ratio / (val_ratio + test_ratio)
-    val_df, test_df = train_test_split(
-        temp_df, test_size=(1 - rel_val), stratify=temp_df["label"], random_state=seed
-    )
+    full = pd.concat([exported["train"], exported["val"], exported["test"]], ignore_index=True)
+    full[cols].to_csv(processed_dir / "full_manifest.csv", index=False)
 
-    train_df.to_csv(processed_dir / "train.csv", index=False)
-    val_df.to_csv(processed_dir / "val.csv", index=False)
-    test_df.to_csv(processed_dir / "test.csv", index=False)
-    manifest.to_csv(processed_dir / "full_manifest.csv", index=False)
-
-    print(f"Splits → train={len(train_df)} val={len(val_df)} test={len(test_df)}")
-    print(f"Manifests saved under {processed_dir}")
+    print(f"\nDone. Total {len(full)} images ({export_size}px) → {processed_dir}")
+    print("Next: python scripts/train_lightweight.py")
 
 
 if __name__ == "__main__":

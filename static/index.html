@@ -124,7 +124,7 @@
 
 
   <h1>Skin Lesion Screener</h1>
-  <p class="sub">Upload a dermoscopic image (JPG/PNG).</p>
+  <p class="sub">Upload a close-up dermoscopic lesion image (JPG/PNG) — same style as HAM10000, not a regular skin photo.</p>
 
   <div class="card">
     <input type="file" id="file" accept="image/jpeg,image/png" />
@@ -207,7 +207,9 @@
         pred.className = 'label ' + label;
         conf.textContent = `Confidence: ${data.confidence_percent}%`;
         const p = data.probabilities_percent;
-        bars.innerHTML = `Benign: ${p.benign}%<br>Malignant: ${p.malignant}%`;
+        let html = `Benign: ${p.benign}%<br>Malignant: ${p.malignant}%`;
+        if (data.hint) html += `<br><br><span style="color:#f0ad4e">${data.hint}</span>`;
+        bars.innerHTML = html;
         result.style.display = 'block';
       } catch (e) {
         err.textContent = e.message;

@@ -1,6 +1,6 @@
 # Skin Lesion Screener
 
-Lightweight **CPU-only** binary classifier (benign vs malignant) for dermoscopic images, trained on an [ISIC 2019](https://challenge.isic-archive.com/data/) subset, with a localhost web API.
+Lightweight **CPU-only** binary classifier (benign vs malignant) for dermoscopic images, trained on a small **[DermaMNIST](https://medmnist.com/)** subset (HAM10000-derived, auto-download), with a localhost web API.
 
 
 ## Highlights
@@ -11,9 +11,21 @@ Lightweight **CPU-only** binary classifier (benign vs malignant) for dermoscopic
 | Training | Full network on CPU | Only classifier head |
 | Goal | Fast, deployable screening | Pretrained baseline comparison |
 
-## Quick start (no ISIC download)
+## Dataset (DermaMNIST / MedMNIST)
 
-Verify the full pipeline on synthetic data:
+| | Old (ISIC 2019) | **New (DermaMNIST)** |
+|---|---|---|
+| Download | Thousands of S3 image URLs | **One `pip` package, ~25 MB** |
+| Default size | ~4,000 images | **1,000 images** (configurable) |
+| Source | ISIC challenge | [HAM10000](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/DBW86T) via MedMNIST |
+
+**Binary mapping (7 classes → 2)**
+
+| Malignant | Benign |
+|---|---|
+| akiec, bcc, mel | bkl, df, nv, vasc |
+
+## Quick start
 
 ```bash
 cd skin-lesion-screener
@@ -22,107 +34,90 @@ source .venv/bin/activate
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 
+<<<<<<< Updated upstream
 python scripts/demo_quickstart.py   # trains tiny model (~1–2 min CPU)
 python scripts/run_api.py           # http://127.0.0.1:8000
 
 ```
 Open http://127.0.0.1:8000 in your browser, or use the interactive docs at http://127.0.0.1:8000/docs .
+=======
+python scripts/download_data.py        # ~1–3 min, downloads + exports subset
+python scripts/train_lightweight.py
+python scripts/run_api.py              # http://127.0.0.1:8000
+```
 
-## Full pipeline (ISIC 2019)
+**Smaller subset (e.g. 500 images):**
+>>>>>>> Stashed changes
 
-### 1. Download subset (~4,000 images)
+```bash
+python scripts/download_data.py --subset-size 500
+```
+
+**Synthetic smoke test (no download):**
+
+```bash
+python scripts/demo_quickstart.py
+python scripts/run_api.py
+```
+
+## Full pipeline
+
+### 1. Prepare data
 
 ```bash
 python scripts/download_data.py
 ```
 
-This fetches the official ground-truth CSV from AWS, maps 8 ISIC classes to binary labels, and downloads a stratified subset. Expect **30–60+ minutes** on a typical connection.
+Exports JPGs to `data/raw/` and CSV manifests to `data/processed/`.
 
-Options:
-
-- `--max-images 200` — quick test with fewer downloads  
-- `--skip-images` — only build CSV splits (if you already have images under `data/raw/`)
-
-**Binary mapping**
-
-| Malignant / suspicious | Benign |
-|---|---|
-| MEL, BCC, SCC, AK | NV, BKL, DF, VASC |
-
-### 2. Train models (CPU)
+### 2. Train (CPU)
 
 ```bash
-python scripts/train_lightweight.py   # ~80K param CNN
-python scripts/train_baseline.py      # frozen ResNet18 comparison
-python scripts/compare_models.py      # side-by-side metrics
+python scripts/train_lightweight.py
+python scripts/train_baseline.py      # optional comparison
+python scripts/compare_models.py
 ```
 
-Metrics are saved under `results/`.
-
-### 3. Run API
+### 3. API
 
 ```bash
 python scripts/run_api.py
 ```
 
-**POST** `/predict` with multipart file field `file` (JPG/PNG).
-
-Example:
-
 ```bash
-curl -X POST "http://127.0.0.1:8000/predict" \
-  -F "file=@/path/to/lesion.jpg"
-```
-
-Response:
-
-```json
-{
-  "prediction": "Benign",
-  "confidence_percent": 87.42,
-  "probabilities_percent": {
-    "benign": 87.42,
-    "malignant": 12.58
-  },
-  "disclaimer": "Research/demo only — not a medical device..."
-}
-```
-
-Switch the API checkpoint in `config.yaml` → `models.default_for_api`.
-
-## Project layout
-
-```
-skin-lesion-screener/
-├── api/main.py              # FastAPI app
-├── static/index.html        # Simple upload UI
-├── config.yaml              # Data URLs, hyperparameters, API port
-├── src/
-│   ├── models.py            # LightweightCNN + ResNet18
-│   ├── dataset.py
-│   ├── train.py
-│   └── inference.py
-├── scripts/
-│   ├── download_data.py
-│   ├── train_lightweight.py
-│   ├── train_baseline.py
-│   ├── compare_models.py
-│   ├── demo_quickstart.py
-│   └── run_api.py
-└── models/                  # Saved .pt checkpoints
+curl -X POST "http://127.0.0.1:8000/predict" -F "file=@/path/to/lesion.jpg"
 ```
 
 ## Paper / experiment notes
 
-- **Dataset**: ISIC 2019, 3k–5k stratified subset (`config.yaml` → `subset_size`)  
-- **Input**: 128×128 RGB, ImageNet normalization  
-- **Metrics**: accuracy, F1, AUC, confusion matrix (see `results/*.json`)  
-- **Contribution angle**: comparable screening performance with orders-of-magnitude fewer parameters and no GPU requirement  
+- **Dataset**: DermaMNIST subset (`config.yaml` → `subset_size`, default 1000)  
+- **Input**: 128×128 RGB (upscaled from 28×28 MedMNIST tiles)  
+- **Metrics**: `results/*.json` — accuracy, F1, AUC, confusion matrix  
+- **Citation**: Yang et al., MedMNIST v3 — see https://medmnist.com/
 
 ## Configuration
 
-Edit `config.yaml` for subset size, epochs, image size, malignant/benign class lists, and API host/port.
+Edit `config.yaml` for `subset_size`, class IDs, epochs, and API port.
+
+## Troubleshooting wrong predictions
+
+1. **Re-prepare data and retrain** (required after fixes):
+   ```bash
+   python scripts/download_data.py
+   python scripts/train_lightweight.py
+   python scripts/verify_model.py   # should be ~60%+ on test tiles
+   python scripts/run_api.py      # restart API after retraining
+   ```
+
+2. **Use the right image type** — model is trained on **dermoscopic** crops (HAM10000 / DermaMNIST), not general skin photos or internet pictures.
+
+3. **Test with a known file** from the dataset:
+   ```bash
+   curl -X POST http://127.0.0.1:8000/predict -F "file=@data/raw/derma_test_00000.png"
+   ```
+
+4. If everything looks malignant: you may be on an **old checkpoint** — delete `models/lightweight_cnn.pt` and train again.
 
 ## License & ethics
 
-ISIC data has its own [terms of use](https://www.isic-archive.com/). This project is a research demo — always involve qualified clinicians for real patient care.
+HAM10000 / MedMNIST have their own licenses. This repo is a research demo — not a medical device.

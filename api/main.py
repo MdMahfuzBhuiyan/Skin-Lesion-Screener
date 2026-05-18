@@ -25,10 +25,11 @@ app = FastAPI(
 _config = None
 _model = None
 _image_size = None
+_threshold = 0.5
 
 
 def get_model():
-    global _config, _model, _image_size
+    global _config, _model, _image_size, _threshold
     if _model is None:
         _config = load_config(ROOT / "config.yaml")
         ckpt = ROOT / _config["models"]["default_for_api"]
@@ -36,8 +37,8 @@ def get_model():
             raise FileNotFoundError(
                 f"No checkpoint at {ckpt}. Train first: python scripts/train_lightweight.py"
             )
-        _model, _image_size, _ = load_model(ckpt, _config)
-    return _model, _image_size
+        _model, _image_size, _, _threshold, _ = load_model(ckpt, _config)
+    return _model, _image_size, _threshold
 
 
 @app.on_event("startup")  # noqa: deprecated but simple for local demo
@@ -66,7 +67,7 @@ async def predict(file: UploadFile = File(...)):
         raise HTTPException(400, "Upload a JPG or PNG image.")
 
     try:
-        model, image_size = get_model()
+        model, image_size, threshold = get_model()
     except FileNotFoundError as e:
         raise HTTPException(503, str(e)) from e
 
@@ -76,11 +77,20 @@ async def predict(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(400, f"Invalid image: {e}") from e
 
-    result = predict_image(model, image, image_size)
+    result = predict_image(model, image, image_size, threshold=threshold)
+    probs = result["probabilities"]
+    spread = abs(probs["benign"] - probs["malignant"])
+    hint = None
+    if spread < 15:
+        hint = (
+            "Low confidence. Use a close-up dermoscopic lesion photo (like HAM10000), "
+            "not a regular phone photo of skin."
+        )
     return {
         "prediction": result["label"].capitalize(),
         "confidence_percent": result["confidence"],
-        "probabilities_percent": result["probabilities"],
+        "probabilities_percent": probs,
+        "hint": hint,
         "disclaimer": "Research/demo only — not a medical device. See a dermatologist for diagnosis.",
     }
 

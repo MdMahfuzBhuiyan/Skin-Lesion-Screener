@@ -5,12 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
 from src.labels import BINARY_LABELS
+from src.paths import resolve_data_path
 
 LABEL_TO_IDX = {name: i for i, name in enumerate(BINARY_LABELS)}
 IDX_TO_LABEL = {i: name for name, i in LABEL_TO_IDX.items()}
@@ -22,7 +22,8 @@ def get_train_transforms(image_size: int) -> transforms.Compose:
             transforms.Resize((image_size, image_size)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.1),
+            transforms.RandomRotation(15),
+            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.05),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
@@ -30,6 +31,7 @@ def get_train_transforms(image_size: int) -> transforms.Compose:
 
 
 def get_eval_transforms(image_size: int) -> transforms.Compose:
+    """Same preprocessing for val/test and API uploads."""
     return transforms.Compose(
         [
             transforms.Resize((image_size, image_size)),
@@ -49,7 +51,8 @@ class SkinLesionDataset(Dataset):
 
     def __getitem__(self, idx: int):
         row = self.df.iloc[idx]
-        image = Image.open(row["filepath"]).convert("RGB")
+        path = resolve_data_path(row["filepath"])
+        image = Image.open(path).convert("RGB")
         if self.transform:
             image = self.transform(image)
         label = LABEL_TO_IDX[row["label"]]

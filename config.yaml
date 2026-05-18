@@ -1,23 +1,24 @@
 # Skin Lesion Screener — CPU-friendly defaults
 data:
-  ground_truth_url: "https://isic-challenge-data.s3.amazonaws.com/2019/ISIC_2019_Training_GroundTruth.csv"
-  image_base_url: "https://isic-challenge-data.s3.amazonaws.com/2019/ISIC_2019_Training_Input"
-  raw_dir: "data/raw"
-  processed_dir: "data/processed"
-  subset_size: 4000
-  train_ratio: 0.8
-  val_ratio: 0.1
-  test_ratio: 0.1
+  # MedMNIST DermaMNIST: auto-download via pip (~25 MB), derived from HAM10000
+  # https://medmnist.com/ — no manual ISIC URLs or per-image HTTP downloads
+  source: dermamnist
+  raw_dir: data/raw
+  processed_dir: data/processed
+  medmnist_load_size: 28
+  export_size: 128
+  subset_size: 1000
   seed: 42
 
-  # ISIC 2019 one-hot columns → binary
-  malignant_classes: ["MEL", "BCC", "SCC", "AK"]
-  benign_classes: ["NV", "BKL", "DF", "VASC"]
+  # DermaMNIST class index (0–6) → binary
+  # akiec, bcc, mel → malignant | bkl, df, nv, vasc → benign
+  malignant_class_ids: [0, 1, 4]
+  benign_class_ids: [2, 3, 5, 6]
 
 training:
   image_size: 128
   batch_size: 32
-  epochs: 12
+  epochs: 15
   learning_rate: 0.001
   num_workers: 0
   device: "cpu"

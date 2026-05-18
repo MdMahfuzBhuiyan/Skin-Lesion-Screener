@@ -52,9 +52,9 @@ def main():
     print("Training on synthetic demo data (CPU)…")
     train_model("lightweight", config, out)
 
-    model, image_size, _ = load_model(out, config)
+    model, image_size, _, threshold, _ = load_model(out, config)
     sample = Image.open(next((ROOT / "data" / "raw").glob("*.jpg")))
-    print("Sample prediction:", predict_image(model, sample, image_size))
+    print("Sample prediction:", predict_image(model, sample, image_size, threshold=threshold))
     print("\nDemo ready. Start API: python scripts/run_api.py")
 
 
