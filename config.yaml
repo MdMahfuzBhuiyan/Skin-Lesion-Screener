@@ -1,0 +1,33 @@
+# Skin Lesion Screener — CPU-friendly defaults
+data:
+  ground_truth_url: "https://isic-challenge-data.s3.amazonaws.com/2019/ISIC_2019_Training_GroundTruth.csv"
+  image_base_url: "https://isic-challenge-data.s3.amazonaws.com/2019/ISIC_2019_Training_Input"
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  subset_size: 4000
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+  seed: 42
+
+  # ISIC 2019 one-hot columns → binary
+  malignant_classes: ["MEL", "BCC", "SCC", "AK"]
+  benign_classes: ["NV", "BKL", "DF", "VASC"]
+
+training:
+  image_size: 128
+  batch_size: 32
+  epochs: 12
+  learning_rate: 0.001
+  num_workers: 0
+  device: "cpu"
+  early_stop_patience: 3
+
+models:
+  lightweight: "models/lightweight_cnn.pt"
+  baseline: "models/resnet18_baseline.pt"
+  default_for_api: "models/lightweight_cnn.pt"
+
+api:
+  host: "127.0.0.1"
+  port: 8000

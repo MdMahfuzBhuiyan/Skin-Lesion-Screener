@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Skin Lesion Screener</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3d9cf5;
+      --benign: #34c759;
+      --malignant: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; text-align: center; max-width: 32rem; }
+
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    input[type="file"] { width: 100%; margin-bottom: 1rem; color: var(--muted); }
+    button {
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #preview { width: 100%; border-radius: 8px; margin-top: 1rem; display: none; }
+    #result { margin-top: 1.25rem; display: none; }
+    .label { font-size: 1.25rem; font-weight: 600; }
+    .label.benign { color: var(--benign); }
+    .label.malignant { color: var(--malignant); }
+    .conf { color: var(--muted); margin-top: 0.25rem; }
+    .bars { margin-top: 0.75rem; font-size: 0.85rem; }
+    .disclaimer {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 1.5rem;
+      text-align: center;
+      max-width: 28rem;
+    }
+    .error { color: var(--malignant); margin-top: 1rem; }
+
+    /* ── Developer credits ── */
+    .dev-section {
+      margin-top: 2.5rem;
+      text-align: center;
+      border-top: 1px solid #2a3a50;
+      padding-top: 1.5rem;
+      width: 100%;
+      max-width: 420px;
+    }
+    .dev-title {
+      font-size: 0.8rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+    .dev-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .dev-card {
+      background: var(--card);
+      border-radius: 10px;
+      padding: 0.65rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .dev-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #243044;
+      border: 2px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .dev-info { text-align: left; }
+    .dev-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .dev-reg {
+      font-size: 0.78rem;
+      color: var(--accent);
+      margin-top: 0.1rem;
+    }
+  </style>
+</head>
+<body>
+
+
+  <h1>Skin Lesion Screener</h1>
+  <p class="sub">Upload a dermoscopic image (JPG/PNG).</p>
+
+  <div class="card">
+    <input type="file" id="file" accept="image/jpeg,image/png" />
+    <button id="btn" disabled>Analyze</button>
+    <img id="preview" alt="Preview" />
+    <div id="result">
+      <div class="label" id="pred"></div>
+      <p class="conf" id="conf"></p>
+      <div class="bars" id="bars"></div>
+    </div>
+    <p class="error" id="err" style="display:none"></p>
+  </div>
+
+  <!-- Developer Credits -->
+  <div class="dev-section">
+    <p class="dev-title">Developed by</p>
+    <div class="dev-cards">
+
+      <div class="dev-card">
+        <div class="dev-avatar">👩</div>
+        <div class="dev-info">
+          <div class="dev-name">Sarna Rani Saha</div>
+          <div class="dev-reg">22201023</div>
+        </div>
+      </div>
+
+      <div class="dev-card">
+        <div class="dev-avatar">👩</div>
+        <div class="dev-info">
+          <div class="dev-name">Mst. Zerin Firdusi</div>
+          <div class="dev-reg">22201020</div>
+        </div>
+      </div>
+
+      <div class="dev-card">
+        <div class="dev-avatar">👨</div>
+        <div class="dev-info">
+          <div class="dev-name">Md. Mahfuz Bhuiyan</div>
+          <div class="dev-reg">22201013</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('file');
+    const btn = document.getElementById('btn');
+    const preview = document.getElementById('preview');
+    const result = document.getElementById('result');
+    const pred = document.getElementById('pred');
+    const conf = document.getElementById('conf');
+    const bars = document.getElementById('bars');
+    const err = document.getElementById('err');
+
+    fileInput.addEventListener('change', () => {
+      err.style.display = 'none';
+      result.style.display = 'none';
+      const f = fileInput.files[0];
+      btn.disabled = !f;
+      if (f) {
+        preview.src = URL.createObjectURL(f);
+        preview.style.display = 'block';
+      }
+    });
+
+    btn.addEventListener('click', async () => {
+      const f = fileInput.files[0];
+      if (!f) return;
+      btn.disabled = true;
+      err.style.display = 'none';
+      const fd = new FormData();
+      fd.append('file', f);
+      try {
+        const res = await fetch('/predict', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        const label = data.prediction.toLowerCase();
+        pred.textContent = data.prediction;
+        pred.className = 'label ' + label;
+        conf.textContent = `Confidence: ${data.confidence_percent}%`;
+        const p = data.probabilities_percent;
+        bars.innerHTML = `Benign: ${p.benign}%<br>Malignant: ${p.malignant}%`;
+        result.style.display = 'block';
+      } catch (e) {
+        err.textContent = e.message;
+        err.style.display = 'block';
+      }
+      btn.disabled = false;
+    });
+  </script>
+</body>
+</html>
