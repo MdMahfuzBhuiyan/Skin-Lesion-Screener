@@ -25,11 +25,6 @@ pip install -r requirements.txt
 python scripts/demo_quickstart.py   # trains tiny model (~1–2 min CPU)
 python scripts/run_api.py           # http://127.0.0.1:8000
 
-python scripts/download_data.py          # ~4k images; takes a while
-python scripts/train_lightweight.py
-python scripts/train_baseline.py         # optional comparison
-python scripts/compare_models.py
-python scripts/run_api.py
 ```
 Open http://127.0.0.1:8000 in your browser, or use the interactive docs at http://127.0.0.1:8000/docs .
 
